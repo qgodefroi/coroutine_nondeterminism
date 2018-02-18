@@ -4,6 +4,8 @@ This is a POC implementation of an idea I've had in my head for a while: with C+
 
 If <https://github.com/toby-allsopp/coroutine_monad> is Maybe and Either, this tries to look like List.
 
+This is very experimental code, and still very much a work in progress, but it seems worth sharing.
+
 ## Example
 
 ``` cpp
@@ -25,3 +27,9 @@ for (int t : g()) {
 }
 // prints the numbers 2,4,6,1,2,3
 ```
+
+## Work in progress
+
+- remove some obvious ineficiencies (the underlying coroutine is restarted more times than truly necessary)
+- roll more functionality into the list interface, and make nesting them cleaner
+- move closer to proper monad laws and concepts for (hopefully!) a cleaner abstraction
