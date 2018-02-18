@@ -23,6 +23,5 @@ auto g = test_ints();
 for (int t : g()) {
     std::cout << t << '\n';
 }
-    return 0;
 // prints the numbers 2,4,6,1,2,3
 ```

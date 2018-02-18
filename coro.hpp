@@ -1,16 +1,19 @@
 #include "cppcoro/recursive_generator.hpp"
 
+#include <any>
 #include <experimental/coroutine>
+#include <optional>
 #include <vector>
 
 struct choice_base {
-    std::size_t pick;
+    std::any pick;
 };
 
 template <class Choices>
 struct choice : choice_base {
     Choices* choices;
 
+    using value_type = std::decay_t<decltype(*std::begin(*choices))>;
     choice(Choices&& v) noexcept : choice_base{0}, choices(&v) {}
 
     bool await_ready() noexcept { return false; }
@@ -18,20 +21,17 @@ struct choice : choice_base {
     template <class U>
     void await_suspend(
         std::experimental::coroutine_handle<U> h) noexcept {
-        h.promise().options.clear();
-        for (std::size_t i = 0; i < choices->size(); ++i) {
-            h.promise().options.emplace_back(i);
-        }
+        h.promise().options.emplace(
+            [this]() -> cppcoro::generator<std::any> {
+                for (auto ch : *choices) {
+                    co_yield{ch};
+                }
+            }());
         h.promise().awaiting = this;
     }
 
-    auto await_resume() noexcept {
-        auto begin = std::begin(*choices);
-        while (pick) {
-            ++begin;
-            --pick;
-        }
-        return *begin;
+    value_type await_resume() noexcept {
+        return std::move(std::any_cast<value_type>(pick));
     }
 };
 
@@ -41,6 +41,8 @@ choice(std::initializer_list<Choice>)
 
 template <class T>
 struct nondeterministic {
+    using value_type = T;
+
     struct promise_type {
         promise_type() noexcept = default;
         promise_type(promise_type const&) = delete;
@@ -64,7 +66,7 @@ struct nondeterministic {
         void return_value(T& v) noexcept { value = &v; }
 
         T* value = nullptr;
-        std::vector<std::size_t> options = {};
+        std::optional<cppcoro::generator<std::any>> options;
         choice_base* awaiting = nullptr;
     };
 
@@ -94,15 +96,15 @@ struct nondeterministic {
     handle_type coro;
 
     // coroutine methods
-    auto const& operator()() {
+    auto operator()() {
         coro.resume();
-        return coro.promise().options;
+        return std::move(coro.promise().options.value());
     }
 
-    auto const& send(std::size_t pick) {
+    auto send(std::any const& pick) {
         // send pick to awaiter
-        // resume
         coro.promise().awaiting->pick = pick;
+        // resume
         return (*this)();
     }
 };
@@ -111,39 +113,34 @@ template <class Gen>
 struct list {
     Gen genfunc;
 
-    template <class T>
-    struct get_return_type {};
-    template <class T>
-    struct get_return_type<nondeterministic<T>> {
-        using type = T;
-    };
-    using coro_return_type =
-        typename get_return_type<decltype(genfunc())>::type;
-    using value_type = coro_return_type;
-    list(Gen g) noexcept : genfunc(std::move(g)) {}
+    using value_type = typename decltype(genfunc())::value_type;
 
-    cppcoro::recursive_generator<coro_return_type> operator()(
-        std::vector<std::size_t> chosen_indices = {}) {
+    explicit list(Gen g) noexcept : genfunc(std::move(g)) {}
+
+    cppcoro::recursive_generator<value_type> operator()(
+        std::vector<std::any*> chosen_picks = {}) {
         // initiate the wrapped coroutine (get a nondeterministic<T>)
         auto g = genfunc();
 
         // call it until it stops on a choice
-        std::vector<std::size_t> possible_choices = g();
+        auto possible_choices = g();
         // repeat all previous choices
-        for (auto id : chosen_indices) {
-            possible_choices = g.send(id);
+        for (auto id : chosen_picks) {
+            possible_choices = g.send(*id);
         }
+
         // we've reached the end, yield the final result
         if (g.coro.done()) {
             co_yield std::move(*g.coro.promise().value);
         }
-        // the coroutine is stuck on a choice, restart with each
+
+        // if the coroutine is stuck on a choice, restart with each
         // possibility
         else {
-            for (auto newid : possible_choices) {
-                auto new_indices = chosen_indices;
-                new_indices.emplace_back(newid);
-                co_yield (*this)(new_indices);
+            for (auto new_pick : possible_choices) {
+                auto new_picks = chosen_picks;
+                new_picks.emplace_back(&new_pick);
+                co_yield (*this)(new_picks);
             }
         }
     }
