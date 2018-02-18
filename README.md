@@ -28,6 +28,12 @@ for (int t : g()) {
 // prints the numbers 2,4,6,1,2,3
 ```
 
+## Usage
+
+This repository should contain everything needed, included generator types taken from <https://github.com/lewissbaker/cppcoro>. I have been testing this with clang 5, c++17, libc++ and -fcoroutines-ts.
+
+I'll add build scripts and more examples at some point.
+
 ## Work in progress
 
 - remove some obvious ineficiencies (the underlying coroutine is restarted more times than truly necessary)
