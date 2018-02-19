@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+namespace detail {
 struct choice_base {
     std::any pick;
 };
@@ -49,6 +50,7 @@ struct choice : choice_base {
 template <class Choice>
 choice(std::initializer_list<Choice>)
     ->choice<std::initializer_list<Choice>>;
+}  // namespace detail
 
 template <class T>
 struct nondeterministic {
@@ -81,12 +83,12 @@ struct nondeterministic {
 
         template <class Iterable>
         auto await_transform(Iterable&& it) noexcept {
-            return choice(std::forward<Iterable>(it));
+            return detail::choice(std::forward<Iterable>(it));
         }
 
         std::variant<std::monostate, T, cppcoro::generator<std::any>>
             options_or_result;
-        choice_base* awaiting = nullptr;
+        detail::choice_base* awaiting = nullptr;
     };
 
     // constructors/destructor
@@ -139,11 +141,13 @@ struct nondeterministic {
     }
 };
 
+namespace detail {
 template <class CoroutineCreator>
 struct list_value_type {
     using type = typename decltype(
         std::declval<CoroutineCreator>()())::value_type;
 };
+}  // namespace detail
 
 /**
  * list: takes a function that returns a nondeterministic<T> coroutine
@@ -151,7 +155,7 @@ struct list_value_type {
  */
 template <class CoroutineCreator>
 cppcoro::recursive_generator<
-    typename list_value_type<CoroutineCreator>::type>
+    typename detail::list_value_type<CoroutineCreator>::type>
 list(CoroutineCreator const& genfunc,
      std::vector<std::any*> chosen_picks = {}) {
     // initiate the wrapped coroutine (get a nondeterministic<T>)
@@ -189,7 +193,7 @@ template <class CoroutineCreator,
           class = std::enable_if_t<
               std::is_rvalue_reference_v<CoroutineCreator>>>
 cppcoro::recursive_generator<
-    typename list_value_type<CoroutineCreator>::type>
+    typename detail::list_value_type<CoroutineCreator>::type>
 list(CoroutineCreator&& genfunc) {
     return list(genfunc);
 }

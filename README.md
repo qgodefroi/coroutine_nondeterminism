@@ -11,8 +11,8 @@ This is very experimental code, and still very much a work in progress, but it s
 ``` cpp
 auto test_ints() {
     return list([]() -> nondeterministic<int> {
-        bool times2 = co_await choice{true, false};
-        int number = co_await choice{1, 2, 3};
+        bool times2 = co_await std::vector{true, false};
+        int number = co_await std::vector{1, 2, 3};
         if (times2)
             co_return number * 2;
         else
