@@ -2,6 +2,7 @@
 
 #include <any>
 #include <experimental/coroutine>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -138,39 +139,57 @@ struct nondeterministic {
     }
 };
 
-template <class Gen>
-struct list {
-    Gen genfunc;
+template <class CoroutineCreator>
+struct list_value_type {
+    using type = typename decltype(
+        std::declval<CoroutineCreator>()())::value_type;
+};
 
-    using value_type = typename decltype(genfunc())::value_type;
+/**
+ * list: takes a function that returns a nondeterministic<T> coroutine
+ * returns a generator that will explore all possible paths
+ */
+template <class CoroutineCreator>
+cppcoro::recursive_generator<
+    typename list_value_type<CoroutineCreator>::type>
+list(CoroutineCreator const& genfunc,
+     std::vector<std::any*> chosen_picks = {}) {
+    // initiate the wrapped coroutine (get a nondeterministic<T>)
+    auto nondet = genfunc();
 
-    explicit list(Gen g) noexcept : genfunc(std::move(g)) {}
+    // call it until it stops on a choice
+    nondet();
+    // repeat all previous choices
+    for (auto id : chosen_picks) {
+        nondet.resume_with(*id);
+    }
 
-    cppcoro::recursive_generator<value_type> operator()(
-        std::vector<std::any*> chosen_picks = {}) {
-        // initiate the wrapped coroutine (get a nondeterministic<T>)
-        auto nondet = genfunc();
+    // we've reached the end, yield the final result
+    if (nondet.coro.done()) {
+        co_yield std::move(nondet.result());
+    }
 
-        // call it until it stops on a choice
-        nondet();
-        // repeat all previous choices
-        for (auto id : chosen_picks) {
-            nondet.resume_with(*id);
-        }
-
-        // we've reached the end, yield the final result
-        if (nondet.coro.done()) {
-            co_yield std::move(nondet.result());
-        }
-
-        // if the coroutine is stuck on a choice, restart with each
-        // possibility
-        else {
-            for (auto new_pick : nondet.options()) {
-                auto new_picks = chosen_picks;
-                new_picks.emplace_back(&new_pick);
-                co_yield (*this)(new_picks);
-            }
+    // if the coroutine is stuck on a choice, restart with each
+    // possibility
+    else {
+        for (auto new_pick : nondet.options()) {
+            auto new_picks = chosen_picks;
+            new_picks.emplace_back(&new_pick);
+            co_yield list(genfunc, new_picks);
         }
     }
-};
+}
+
+/**
+ * list overload for rvalues, to ensure they are captured as
+ * references but still non-modifiable (this would have weird
+ * semantics, we're calling it an unknown amount of times)
+ */
+template <class CoroutineCreator,
+          class = std::enable_if_t<
+              std::is_rvalue_reference_v<CoroutineCreator>>>
+cppcoro::recursive_generator<
+    typename list_value_type<CoroutineCreator>::type>
+list(CoroutineCreator&& genfunc) {
+    return list(genfunc);
+}

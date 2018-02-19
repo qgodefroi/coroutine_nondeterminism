@@ -21,9 +21,9 @@ auto test_ints() {
 }
 
 // later
-auto g = test_ints();
-for (int t : g()) {
-    std::cout << t << '\n';
+auto f = test_ints();
+for (int i : f) {
+    std::cout << i << '\n';
 }
 // prints the numbers 2,4,6,1,2,3
 ```
