@@ -8,7 +8,7 @@ cppcoro::generator<bool> test_bools() {
 
 auto test_ints() {
     return list([]() -> nondeterministic<int> {
-        bool times2 = co_await choice(test_bools());
+        bool times2 = co_await test_bools();
         int number = co_await choice{1, 2, 3};
         if (times2)
             co_return number * 2;

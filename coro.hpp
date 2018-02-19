@@ -68,6 +68,11 @@ struct nondeterministic {
                 std::forward<ReturnedT>(v));
         }
 
+        template <class Iterable>
+        auto await_transform(Iterable&& it) noexcept {
+            return choice(std::forward<Iterable>(it));
+        }
+
         std::variant<std::monostate, T, cppcoro::generator<std::any>>
             options_or_result;
         choice_base* awaiting = nullptr;
