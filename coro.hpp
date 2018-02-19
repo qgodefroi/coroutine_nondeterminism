@@ -101,7 +101,7 @@ struct nondeterministic {
     // coroutine methods
     void operator()() { coro.resume(); }
 
-    void send(std::any const& pick) {
+    void resume_with(std::any const& pick) {
         // send pick to awaiter
         coro.promise().awaiting->pick = pick;
         // resume
@@ -134,24 +134,24 @@ struct list {
     cppcoro::recursive_generator<value_type> operator()(
         std::vector<std::any*> chosen_picks = {}) {
         // initiate the wrapped coroutine (get a nondeterministic<T>)
-        auto g = genfunc();
+        auto nondet = genfunc();
 
         // call it until it stops on a choice
-        g();
+        nondet();
         // repeat all previous choices
         for (auto id : chosen_picks) {
-            g.send(*id);
+            nondet.resume_with(*id);
         }
 
         // we've reached the end, yield the final result
-        if (g.coro.done()) {
-            co_yield std::move(g.result());
+        if (nondet.coro.done()) {
+            co_yield std::move(nondet.result());
         }
 
         // if the coroutine is stuck on a choice, restart with each
         // possibility
         else {
-            for (auto new_pick : g.options()) {
+            for (auto new_pick : nondet.options()) {
                 auto new_picks = chosen_picks;
                 new_picks.emplace_back(&new_pick);
                 co_yield (*this)(new_picks);
