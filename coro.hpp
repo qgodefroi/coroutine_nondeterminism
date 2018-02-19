@@ -11,10 +11,16 @@ struct choice_base {
 
 template <class Choices>
 struct choice : choice_base {
-    Choices* choices;
+    Choices& choices;
 
-    using value_type = std::decay_t<decltype(*std::begin(*choices))>;
-    choice(Choices&& v) noexcept : choice_base{0}, choices(&v) {}
+    using value_type = std::decay_t<decltype(*std::begin(choices))>;
+
+    // NOTE: I thing taking references here is "safe" because this
+    // object will only live as long as its co_await expression, so it
+    // shouldn't outlive a temporary
+    // This definitely fees brittle though and
+    choice(Choices& v) noexcept : choice_base{0}, choices(v) {}
+    choice(Choices&& v) noexcept : choice_base{0}, choices(v) {}
 
     bool await_ready() noexcept { return false; }
 
@@ -23,14 +29,18 @@ struct choice : choice_base {
         std::experimental::coroutine_handle<U> h) noexcept {
         h.promise().options_or_result =
             [this]() -> cppcoro::generator<std::any> {
-            for (auto ch : *choices) {
-                co_yield{ch};
+            for (auto& ch : choices) {
+                co_yield{std::move(ch)};
             }
         }();
         h.promise().awaiting = this;
     }
 
     value_type await_resume() noexcept {
+        // This can never fail outside of a big programming error in
+        // the library part.
+        // We retrieve the exact type that would normally be returned
+        // by the collection passed in
         return std::move(std::any_cast<value_type>(pick));
     }
 };
